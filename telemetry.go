@@ -15,9 +15,11 @@ import (
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	"go.opentelemetry.io/otel/metric/global"
 	"go.opentelemetry.io/otel/metric/instrument"
 	"go.opentelemetry.io/otel/metric/instrument/syncfloat64"
+	"go.opentelemetry.io/otel/propagation"
 	controller "go.opentelemetry.io/otel/sdk/metric/controller/basic"
 	"go.opentelemetry.io/otel/sdk/metric/export/aggregation"
 	processor "go.opentelemetry.io/otel/sdk/metric/processor/basic"
@@ -26,6 +28,42 @@ import (
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.7.0"
 )
+
+// EnableOTELHTTPTracing enables OTEL tracing for HTTP requests with the OTEL provider configured via
+// environment variables. This allows us to switch providers purely by changing the environment variables.
+func EnableOTELHTTPTracing(ctx context.Context) func(context.Context) error {
+	// Configure a new exporter using environment variables for sending data to Honeycomb over gRPC.
+	exp, err := newExporter(ctx)
+	if err != nil {
+		log.Fatalf("failed to initialize exporter: %v", err)
+	}
+
+	// Create a new tracer provider with a batch span processor and the otlp exporter.
+	tp := newTraceProvider(exp)
+
+	// Set the Tracer Provider and the W3C Trace Context propagator as globals
+	otel.SetTracerProvider(tp)
+
+	// Register the trace context and baggage propagators so data is propagated across services/processes.
+	otel.SetTextMapPropagator(
+		propagation.NewCompositeTextMapPropagator(
+			propagation.TraceContext{},
+			propagation.Baggage{},
+		),
+	)
+	return tp.Shutdown
+}
+
+func newExporter(ctx context.Context) (*otlptrace.Exporter, error) {
+	client := otlptracehttp.NewClient()
+	return otlptrace.New(ctx, client)
+}
+
+func newTraceProvider(exp *otlptrace.Exporter) *sdktrace.TracerProvider {
+	return sdktrace.NewTracerProvider(
+		sdktrace.WithBatcher(exp),
+	)
+}
 
 var serviceName string
 
