@@ -99,6 +99,7 @@ func EnableOTELMetrics(ctx context.Context) func(context.Context) {
 		return func(context.Context) {}
 	}
 
+	log.Println("Metrics reporting enabled")
 	global.SetMeterProvider(c)
 	return func(ctx context.Context) {
 		c.Stop(ctx)
