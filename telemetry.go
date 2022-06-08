@@ -18,14 +18,17 @@ import (
 	"go.opentelemetry.io/otel/sdk/metric/export/aggregation"
 	processor "go.opentelemetry.io/otel/sdk/metric/processor/basic"
 	selector "go.opentelemetry.io/otel/sdk/metric/selector/simple"
+	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	semconv "go.opentelemetry.io/otel/semconv/v1.4.0"
 )
 
 // Enable enables OTEL tracing and metrics for HTTP requests with the OTEL provider configured via
 // environment variables. This allows us to switch providers purely by changing the environment variables.
-func Enable(ctx context.Context) func() {
+func Enable(ctx context.Context, serviceName string, headers map[string]string) func() {
+	log.Println("Enabling OTEL tracing and metrics")
 	shutdownTracing := EnableOTELTracing(ctx)
-	shutdownMetrics := EnableOTELMetrics(ctx)
+	shutdownMetrics := EnableOTELMetrics(ctx, serviceName, headers)
 	return func() {
 		shutdownTracing(ctx)
 		shutdownMetrics(ctx)
@@ -64,18 +67,32 @@ func newExporter(ctx context.Context) (*otlptrace.Exporter, error) {
 func newTraceProvider(exp *otlptrace.Exporter) *sdktrace.TracerProvider {
 	return sdktrace.NewTracerProvider(
 		sdktrace.WithBatcher(exp),
+		sdktrace.WithSampler(sdktrace.ParentBased(sdktrace.TraceIDRatioBased(0.1))),
 	)
 }
 
 // EnableOTELMetrics enables OTEL metrics for HTTP requests with the OTEL provider configured via
 // environment variables. This allows us to switch providers purely by changing the environment variables.
-func EnableOTELMetrics(ctx context.Context) func(context.Context) {
+func EnableOTELMetrics(ctx context.Context, serviceName string, headers map[string]string) func(context.Context) {
+	/*
+		opts := []otlpmetrichttp.Option{
+			otlpmetrichttp.WithHeaders(headers),
+		}
+		client := otlpmetrichttp.NewClient(opts...)
+	*/
 	client := otlpmetrichttp.NewClient()
-	exporter, err := otlpmetric.New(context.Background(), client)
+	exporter, err := otlpmetric.New(ctx, client)
+	//exporter, err := otlpmetric.New(ctx, client)
 	if err != nil {
 		log.Fatalf("Unable to initialize metrics, will not report metrics")
 		return func(context.Context) {}
 	}
+
+	resource :=
+		resource.NewWithAttributes(
+			semconv.SchemaURL,
+			semconv.ServiceNameKey.String(serviceName),
+		)
 
 	c := controller.New(
 		processor.NewFactory(
@@ -84,8 +101,9 @@ func EnableOTELMetrics(ctx context.Context) func(context.Context) {
 			processor.WithMemory(true),
 		),
 		controller.WithExporter(exporter),
+		controller.WithResource(resource),
 	)
-	if err = c.Start(context.Background()); err != nil {
+	if err = c.Start(ctx); err != nil {
 		log.Fatalf("Unable to start metrics controller, will not report metrics: %v", err)
 		return func(context.Context) {}
 	}
@@ -101,6 +119,7 @@ func EnableOTELMetrics(ctx context.Context) func(context.Context) {
 
 	log.Println("Metrics reporting enabled")
 	global.SetMeterProvider(c)
+
 	return func(ctx context.Context) {
 		c.Stop(ctx)
 		exporter.Shutdown(ctx)
