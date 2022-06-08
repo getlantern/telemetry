@@ -37,14 +37,24 @@ func Enable(ctx context.Context, serviceName string, headers map[string]string) 
 
 // EnableOTELTracing enables OTEL tracing for HTTP requests with the OTEL provider configured via
 // environment variables. This allows us to switch providers purely by changing the environment variables.
+
+// Allows you to specify the sample rate for the tracer between 0.0 and 1.0.
 func EnableOTELTracing(ctx context.Context) func(context.Context) error {
+	return EnableOTELTracingWithSampleRate(ctx, 0.05)
+}
+
+// EnableOTELTracing enables OTEL tracing for HTTP requests with the OTEL provider configured via
+// environment variables. This allows us to switch providers purely by changing the environment variables.
+
+// Allows you to specify the sample rate for the tracer between 0.0 and 1.0.
+func EnableOTELTracingWithSampleRate(ctx context.Context, sampleRate float64) func(context.Context) error {
 	exp, err := newExporter(ctx)
 	if err != nil {
 		log.Fatalf("failed to initialize exporter: %v", err)
 	}
 
 	// Create a new tracer provider with a batch span processor and the otlp exporter.
-	tp := newTraceProvider(exp)
+	tp := newTraceProvider(exp, sampleRate)
 
 	// Set the Tracer Provider and the W3C Trace Context propagator as globals
 	otel.SetTracerProvider(tp)
@@ -64,10 +74,10 @@ func newExporter(ctx context.Context) (*otlptrace.Exporter, error) {
 	return otlptrace.New(ctx, client)
 }
 
-func newTraceProvider(exp *otlptrace.Exporter) *sdktrace.TracerProvider {
+func newTraceProvider(exp *otlptrace.Exporter, sampleRate float64) *sdktrace.TracerProvider {
 	return sdktrace.NewTracerProvider(
 		sdktrace.WithBatcher(exp),
-		sdktrace.WithSampler(sdktrace.ParentBased(sdktrace.TraceIDRatioBased(0.1))),
+		sdktrace.WithSampler(sdktrace.ParentBased(sdktrace.TraceIDRatioBased(sampleRate))),
 	)
 }
 
