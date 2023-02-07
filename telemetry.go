@@ -8,7 +8,7 @@ import (
 	"github.com/getlantern/golog"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
-	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	"go.opentelemetry.io/otel/propagation"
 
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
@@ -29,7 +29,7 @@ func EnableOTELTracing(ctx context.Context) func(context.Context) error {
 	if err != nil {
 		return func(ctx context.Context) error { return nil }
 	}
-	exp, err := otlptrace.New(ctx, otlptracegrpc.NewClient())
+	exp, err := otlptrace.New(ctx, otlptracehttp.NewClient())
 	if err != nil {
 		log.Errorf("telemetry failed to initialize exporter: %w", err)
 		return func(ctx context.Context) error { return nil }
