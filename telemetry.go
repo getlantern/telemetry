@@ -2,9 +2,10 @@ package telemetry
 
 import (
 	"context"
+	"os"
+	"strconv"
 
-	"log"
-
+	"github.com/getlantern/golog"
 	hostMetrics "go.opentelemetry.io/contrib/instrumentation/host"
 	runtimeMetrics "go.opentelemetry.io/contrib/instrumentation/runtime"
 	"go.opentelemetry.io/otel"
@@ -24,10 +25,12 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.4.0"
 )
 
+var log = golog.LoggerFor("telemetry")
+
 // Enable enables OTEL tracing and metrics for HTTP requests with the OTEL provider configured via
 // environment variables. This allows us to switch providers purely by changing the environment variables.
 func Enable(ctx context.Context, serviceName string, headers map[string]string) func() {
-	log.Println("Enabling OTEL tracing and metrics")
+	log.Debug("Enabling OTEL tracing and metrics")
 	shutdownTracing := EnableOTELTracing(ctx)
 	shutdownMetrics := EnableOTELMetrics(ctx, serviceName, headers)
 	return func() {
@@ -39,23 +42,18 @@ func Enable(ctx context.Context, serviceName string, headers map[string]string) 
 // EnableOTELTracing enables OTEL tracing for HTTP requests with the OTEL provider configured via
 // environment variables. This allows us to switch providers purely by changing the environment variables.
 
-// Allows you to specify the sample rate for the tracer between 0.0 and 1.0.
+// Sample rates should be configured via environment variables. See
+// https://opentelemetry-python.readthedocs.io/en/latest/sdk/trace.sampling.html
+// For example:
+// OTEL_TRACES_SAMPLER=traceidratio OTEL_TRACES_SAMPLER_ARG=0.001
 func EnableOTELTracing(ctx context.Context) func(context.Context) error {
-	return EnableOTELTracingWithSampleRate(ctx, 0.05)
-}
-
-// EnableOTELTracing enables OTEL tracing for HTTP requests with the OTEL provider configured via
-// environment variables. This allows us to switch providers purely by changing the environment variables.
-
-// Allows you to specify the sample rate for the tracer between 0.0 and 1.0.
-func EnableOTELTracingWithSampleRate(ctx context.Context, sampleRate float64) func(context.Context) error {
 	exp, err := newExporter(ctx)
 	if err != nil {
 		log.Fatalf("failed to initialize exporter: %v", err)
 	}
 
 	// Create a new tracer provider with a batch span processor and the otlp exporter.
-	tp := newTraceProvider(exp, sampleRate)
+	tp := newTraceProvider(exp)
 
 	// Set the Tracer Provider and the W3C Trace Context propagator as globals
 	otel.SetTracerProvider(tp)
@@ -75,11 +73,19 @@ func newExporter(ctx context.Context) (*otlptrace.Exporter, error) {
 	return otlptrace.New(ctx, client)
 }
 
-func newTraceProvider(exp *otlptrace.Exporter, sampleRate float64) *sdktrace.TracerProvider {
+func newTraceProvider(exp *otlptrace.Exporter) *sdktrace.TracerProvider {
+	sampleRate, found := os.LookupEnv("OTEL_TRACES_SAMPLER_ARG")
+	if !found {
+		sampleRate = "1.0"
+	}
+	sr, err := strconv.ParseFloat(sampleRate, 64)
+	if err != nil {
+		log.Errorf("failed to parse sample rate: %v", err)
+		sr = 1.0
+	}
 	return sdktrace.NewTracerProvider(
 		sdktrace.WithBatcher(exp),
-		sdktrace.WithSampler(sdktrace.ParentBased(sdktrace.TraceIDRatioBased(sampleRate))),
-		sdktrace.WithResource(resource.NewWithAttributes(semconv.SchemaURL, attribute.Key("SampleRate").Int64(int64(1.0/sampleRate)))),
+		sdktrace.WithResource(resource.NewWithAttributes(semconv.SchemaURL, attribute.Key("SampleRate").Int64(int64(1.0/sr)))),
 	)
 }
 
@@ -129,7 +135,7 @@ func EnableOTELMetrics(ctx context.Context, serviceName string, headers map[stri
 		return func(context.Context) {}
 	}
 
-	log.Println("Metrics reporting enabled")
+	log.Debug("Metrics reporting enabled")
 	global.SetMeterProvider(c)
 
 	return func(ctx context.Context) {
