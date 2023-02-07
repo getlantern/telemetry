@@ -10,16 +10,11 @@ import (
 	runtimeMetrics "go.opentelemetry.io/contrib/instrumentation/runtime"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric"
-	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	"go.opentelemetry.io/otel/metric/global"
 	"go.opentelemetry.io/otel/propagation"
-	controller "go.opentelemetry.io/otel/sdk/metric/controller/basic"
-	"go.opentelemetry.io/otel/sdk/metric/export/aggregation"
-	processor "go.opentelemetry.io/otel/sdk/metric/processor/basic"
-	selector "go.opentelemetry.io/otel/sdk/metric/selector/simple"
+
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.4.0"
@@ -94,39 +89,7 @@ func newTraceProvider(exp *otlptrace.Exporter) *sdktrace.TracerProvider {
 // EnableOTELMetrics enables OTEL metrics for HTTP requests with the OTEL provider configured via
 // environment variables. This allows us to switch providers purely by changing the environment variables.
 func EnableOTELMetrics(ctx context.Context, serviceName string, headers map[string]string) func(context.Context) {
-	/*
-		opts := []otlpmetrichttp.Option{
-			otlpmetrichttp.WithHeaders(headers),
-		}
-		client := otlpmetrichttp.NewClient(opts...)
-	*/
-	client := otlpmetrichttp.NewClient()
-	exporter, err := otlpmetric.New(ctx, client)
-	//exporter, err := otlpmetric.New(ctx, client)
-	if err != nil {
-		log.Fatalf("Unable to initialize metrics, will not report metrics")
-		return func(context.Context) {}
-	}
-
-	resource :=
-		resource.NewWithAttributes(
-			semconv.SchemaURL,
-			semconv.ServiceNameKey.String(serviceName),
-		)
-
-	c := controller.New(
-		processor.NewFactory(
-			selector.NewWithInexpensiveDistribution(),
-			aggregation.CumulativeTemporalitySelector(),
-			processor.WithMemory(true),
-		),
-		controller.WithExporter(exporter),
-		controller.WithResource(resource),
-	)
-	if err = c.Start(ctx); err != nil {
-		log.Fatalf("Unable to start metrics controller, will not report metrics: %v", err)
-		return func(context.Context) {}
-	}
+	c := global.MeterProvider()
 	if err := runtimeMetrics.Start(runtimeMetrics.WithMeterProvider(c)); err != nil {
 		log.Fatalf("Failed to start runtime metrics: %v", err)
 		return func(context.Context) {}
@@ -141,7 +104,5 @@ func EnableOTELMetrics(ctx context.Context, serviceName string, headers map[stri
 	global.SetMeterProvider(c)
 
 	return func(ctx context.Context) {
-		c.Stop(ctx)
-		exporter.Shutdown(ctx)
 	}
 }
