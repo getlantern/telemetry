@@ -6,13 +6,10 @@ import (
 	"strconv"
 
 	"github.com/getlantern/golog"
-	hostMetrics "go.opentelemetry.io/contrib/instrumentation/host"
-	runtimeMetrics "go.opentelemetry.io/contrib/instrumentation/runtime"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
-	"go.opentelemetry.io/otel/metric/global"
 	"go.opentelemetry.io/otel/propagation"
 
 	"go.opentelemetry.io/otel/sdk/resource"
@@ -27,10 +24,8 @@ var log = golog.LoggerFor("telemetry")
 func Enable(ctx context.Context, serviceName string, headers map[string]string) func() {
 	log.Debug("Enabling OTEL tracing and metrics")
 	shutdownTracing := EnableOTELTracing(ctx)
-	shutdownMetrics := EnableOTELMetrics(ctx, serviceName, headers)
 	return func() {
 		shutdownTracing(ctx)
-		shutdownMetrics(ctx)
 	}
 }
 
@@ -84,25 +79,4 @@ func newTraceProvider(exp *otlptrace.Exporter) *sdktrace.TracerProvider {
 		// See https://docs.honeycomb.io/manage-data-volume/sampling/
 		sdktrace.WithResource(resource.NewWithAttributes(semconv.SchemaURL, attribute.Key("SampleRate").Int64(int64(1.0/sr)))),
 	)
-}
-
-// EnableOTELMetrics enables OTEL metrics for HTTP requests with the OTEL provider configured via
-// environment variables. This allows us to switch providers purely by changing the environment variables.
-func EnableOTELMetrics(ctx context.Context, serviceName string, headers map[string]string) func(context.Context) {
-	c := global.MeterProvider()
-	if err := runtimeMetrics.Start(runtimeMetrics.WithMeterProvider(c)); err != nil {
-		log.Fatalf("Failed to start runtime metrics: %v", err)
-		return func(context.Context) {}
-	}
-
-	if err := hostMetrics.Start(hostMetrics.WithMeterProvider(c)); err != nil {
-		log.Fatalf("Failed to start host metrics: %v", err)
-		return func(context.Context) {}
-	}
-
-	log.Debug("Metrics reporting enabled")
-	global.SetMeterProvider(c)
-
-	return func(ctx context.Context) {
-	}
 }
