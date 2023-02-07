@@ -37,7 +37,7 @@ func Enable(ctx context.Context, serviceName string, headers map[string]string) 
 // For example:
 // OTEL_TRACES_SAMPLER=traceidratio OTEL_TRACES_SAMPLER_ARG=0.001
 func EnableOTELTracing(ctx context.Context) func(context.Context) error {
-	exp, err := newExporter(ctx)
+	exp, err := otlptrace.New(ctx, otlptracehttp.NewClient())
 	if err != nil {
 		log.Fatalf("failed to initialize exporter: %v", err)
 	}
@@ -56,11 +56,6 @@ func EnableOTELTracing(ctx context.Context) func(context.Context) error {
 		),
 	)
 	return tp.Shutdown
-}
-
-func newExporter(ctx context.Context) (*otlptrace.Exporter, error) {
-	client := otlptracehttp.NewClient()
-	return otlptrace.New(ctx, client)
 }
 
 func newTraceProvider(exp *otlptrace.Exporter) *sdktrace.TracerProvider {
