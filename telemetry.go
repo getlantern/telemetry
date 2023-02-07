@@ -85,6 +85,8 @@ func newTraceProvider(exp *otlptrace.Exporter) *sdktrace.TracerProvider {
 	}
 	return sdktrace.NewTracerProvider(
 		sdktrace.WithBatcher(exp),
+		// This enables Honeycomb in particular to see the sample rate so that it can scale things appropriately.
+		// See https://docs.honeycomb.io/manage-data-volume/sampling/
 		sdktrace.WithResource(resource.NewWithAttributes(semconv.SchemaURL, attribute.Key("SampleRate").Int64(int64(1.0/sr)))),
 	)
 }
