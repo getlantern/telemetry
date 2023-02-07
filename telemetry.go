@@ -16,16 +16,6 @@ import (
 
 var log = golog.LoggerFor("telemetry")
 
-// Enable enables OTEL tracing and metrics for HTTP requests with the OTEL provider configured via
-// environment variables. This allows us to switch providers purely by changing the environment variables.
-func Enable(ctx context.Context, serviceName string, headers map[string]string) func() {
-	log.Debug("Enabling OTEL tracing")
-	shutdownTracing := EnableOTELTracing(ctx)
-	return func() {
-		shutdownTracing(ctx)
-	}
-}
-
 // EnableOTELTracing enables OTEL tracing for HTTP requests with the OTEL provider configured via
 // environment variables. This allows us to switch providers purely by changing the environment variables.
 
@@ -34,13 +24,14 @@ func Enable(ctx context.Context, serviceName string, headers map[string]string) 
 // For example:
 // OTEL_TRACES_SAMPLER=traceidratio OTEL_TRACES_SAMPLER_ARG=0.001
 func EnableOTELTracing(ctx context.Context) func(context.Context) error {
+	log.Debug("Enabling OTEL tracing")
 	err := sampleRate()
 	if err != nil {
 		return func(ctx context.Context) error { return nil }
 	}
 	exp, err := otlptrace.New(ctx, otlptracegrpc.NewClient())
 	if err != nil {
-		log.Errorf("failed to initialize exporter: %w", err)
+		log.Errorf("telemetry failed to initialize exporter: %w", err)
 		return func(ctx context.Context) error { return nil }
 	}
 
@@ -69,21 +60,15 @@ func EnableOTELTracing(ctx context.Context) func(context.Context) error {
 func sampleRate() error {
 	_, found := os.LookupEnv("OTEL_TRACES_SAMPLER")
 	if !found {
-		return log.Errorf("OTEL_TRACES_SAMPLER not found, required for running")
+		return log.Errorf("telemetry OTEL_TRACES_SAMPLER not found, required for running")
 	}
 	sampleRate, found := os.LookupEnv("OTEL_TRACES_SAMPLER_ARG")
 	if !found {
-		return log.Errorf("OTEL_TRACES_SAMPLER_ARG not found, required for running")
+		return log.Errorf("telemetry OTEL_TRACES_SAMPLER_ARG not found, required for running")
 	}
 	_, err := strconv.ParseFloat(sampleRate, 64)
 	if err != nil {
-		return log.Errorf("otel failed to parse sample rate: %w", err)
+		return log.Errorf("telemetry otel failed to parse sample rate: %w", err)
 	}
 	return nil
-}
-
-func newTraceProvider(exp *otlptrace.Exporter) (*sdktrace.TracerProvider, error) {
-	return sdktrace.NewTracerProvider(
-		sdktrace.WithBatcher(exp),
-	), nil
 }
