@@ -14,7 +14,6 @@ import (
 
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-	semconv "go.opentelemetry.io/otel/semconv/v1.4.0"
 )
 
 var log = golog.LoggerFor("telemetry")
@@ -39,11 +38,16 @@ func Enable(ctx context.Context, serviceName string, headers map[string]string) 
 func EnableOTELTracing(ctx context.Context) func(context.Context) error {
 	exp, err := otlptrace.New(ctx, otlptracehttp.NewClient())
 	if err != nil {
-		log.Fatalf("failed to initialize exporter: %v", err)
+		log.Errorf("failed to initialize exporter: %w", err)
+		return func(ctx context.Context) error { return nil }
 	}
 
 	// Create a new tracer provider with a batch span processor and the otlp exporter.
-	tp := newTraceProvider(exp)
+	tp, err := newTraceProvider(exp)
+	if err != nil {
+		log.Errorf("failed to initialize tracer provider: %w", err)
+		return func(ctx context.Context) error { return nil }
+	}
 
 	// Set the Tracer Provider and the W3C Trace Context propagator as globals
 	otel.SetTracerProvider(tp)
@@ -58,22 +62,30 @@ func EnableOTELTracing(ctx context.Context) func(context.Context) error {
 	return tp.Shutdown
 }
 
-func newTraceProvider(exp *otlptrace.Exporter) *sdktrace.TracerProvider {
+func newTraceProvider(exp *otlptrace.Exporter) (*sdktrace.TracerProvider, error) {
 	sampleRate, found := os.LookupEnv("OTEL_TRACES_SAMPLER_ARG")
 	if !found {
-		log.Errorf("OTEL_TRACES_SAMPLER_ARG not found, defaulting sample rate to 1.0")
-		sampleRate = "1.0"
+		return nil, log.Errorf("OTEL_TRACES_SAMPLER_ARG not found, defaulting sample rate to 1.0")
 	}
 	sr, err := strconv.ParseFloat(sampleRate, 64)
 	if err != nil {
-		log.Errorf("failed to parse sample rate: %v", err)
+		log.Errorf("otel failed to parse sample rate: %w", err)
 		sr = 1.0
 	}
+	resources, err := resource.New(context.Background(),
+		resource.WithFromEnv(),
+
+		// This enables Honeycomb in particular to see the sample rate so that it can scale things appropriately.
+		// See https://docs.honeycomb.io/manage-data-volume/sampling/
+		resource.WithAttributes(attribute.Key("SampleRate").Int64(int64(1.0/sr))),
+	)
+	if err != nil {
+		return nil, log.Errorf("otel failed to create resource: %w", err)
+	}
+
 	return sdktrace.NewTracerProvider(
 		sdktrace.WithBatcher(exp),
 		//sdktrace.WithSampler(sdktrace.ParentBased(sdktrace.TraceIDRatioBased(sr))),
-		// This enables Honeycomb in particular to see the sample rate so that it can scale things appropriately.
-		// See https://docs.honeycomb.io/manage-data-volume/sampling/
-		sdktrace.WithResource(resource.NewWithAttributes(semconv.SchemaURL, attribute.Key("SampleRate").Int64(int64(1.0/sr)))),
-	)
+		sdktrace.WithResource(resources),
+	), nil
 }
