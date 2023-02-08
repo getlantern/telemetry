@@ -93,6 +93,7 @@ type override struct {
 
 func (os override) ShouldSample(p sdktrace.SamplingParameters) sdktrace.SamplingResult {
 	if p.ParentContext.Value(alwaysSample) == true {
+		log.Debugf("Overriding sampler to always sample for trace %s", p.Name)
 		return sdktrace.AlwaysSample().ShouldSample(p)
 	}
 	return os.wrapped.ShouldSample(p)
