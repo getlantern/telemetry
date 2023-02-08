@@ -34,9 +34,15 @@ func EnableOTELTracing(ctx context.Context) func(context.Context) error {
 		log.Errorf("telemetry failed to initialize exporter: %w", err)
 		return func(ctx context.Context) error { return nil }
 	}
+	envSampler, err := samplerFromEnv()
+	if err != nil {
+		log.Errorf("telemetry failed to initialize sampler: %w", err)
+		return func(ctx context.Context) error { return nil }
+	}
 
 	// Create a new tracer provider with a batch span processor and the otlp exporter.
 	tp := sdktrace.NewTracerProvider(
+		sdktrace.WithSampler(overrideSampler(envSampler)),
 		sdktrace.WithBatcher(exp),
 	)
 
@@ -71,4 +77,30 @@ func sampleRate() error {
 		return log.Errorf("telemetry otel failed to parse sample rate: %w", err)
 	}
 	return nil
+}
+
+type overrideType string
+
+const OverrideKey = overrideType("sample")
+
+type override struct {
+	wrapped sdktrace.Sampler
+}
+
+func (os override) ShouldSample(p sdktrace.SamplingParameters) sdktrace.SamplingResult {
+	if p.ParentContext.Value(OverrideKey) == true {
+		return sdktrace.AlwaysSample().ShouldSample(p)
+	}
+	return os.wrapped.ShouldSample(p)
+}
+
+func (os override) Description() string {
+	return "OverrideSampler"
+}
+
+// overrideSampler returns a Sampler that uses the sampler from the environment but
+// that checks the parent context for a special key that overrides the sampler to
+// always sample.
+func overrideSampler(wrapped sdktrace.Sampler) sdktrace.Sampler {
+	return override{wrapped: wrapped}
 }
