@@ -79,16 +79,20 @@ func sampleRate() error {
 	return nil
 }
 
+func AlwaysSample(ctx context.Context) context.Context {
+	return context.WithValue(ctx, alwaysSample, true)
+}
+
 type overrideType string
 
-const OverrideKey = overrideType("sample")
+const alwaysSample = overrideType("always-sample")
 
 type override struct {
 	wrapped sdktrace.Sampler
 }
 
 func (os override) ShouldSample(p sdktrace.SamplingParameters) sdktrace.SamplingResult {
-	if p.ParentContext.Value(OverrideKey) == true {
+	if p.ParentContext.Value(alwaysSample) == true {
 		return sdktrace.AlwaysSample().ShouldSample(p)
 	}
 	return os.wrapped.ShouldSample(p)
