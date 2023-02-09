@@ -2,6 +2,7 @@ package telemetry
 
 import (
 	"context"
+	"net/http"
 	"os"
 	"strconv"
 
@@ -42,7 +43,7 @@ func EnableOTELTracing(ctx context.Context) func(context.Context) error {
 
 	// Create a new tracer provider with a batch span processor and the otlp exporter.
 	tp := sdktrace.NewTracerProvider(
-		sdktrace.WithSampler(overrideSampler(envSampler)),
+		sdktrace.WithSampler(ForceableSampler(envSampler)),
 		sdktrace.WithBatcher(exp),
 	)
 
@@ -79,33 +80,57 @@ func sampleRate() error {
 	return nil
 }
 
+// AlwaysSample returns a context that will always be sampled by the sampler.
 func AlwaysSample(ctx context.Context) context.Context {
-	return context.WithValue(ctx, alwaysSample, true)
+	return context.WithValue(ctx, forceSample, true)
 }
 
-type overrideType string
+type forceType string
 
-const alwaysSample = overrideType("always-sample")
+const forceSample = forceType("force-sample")
 
-type override struct {
+type forceable struct {
 	wrapped sdktrace.Sampler
 }
 
-func (os override) ShouldSample(p sdktrace.SamplingParameters) sdktrace.SamplingResult {
-	if p.ParentContext.Value(alwaysSample) == true {
+func (os forceable) ShouldSample(p sdktrace.SamplingParameters) sdktrace.SamplingResult {
+	if val, ok := p.ParentContext.Value(forceSample).(bool); ok && val {
 		log.Debugf("Overriding sampler to always sample for trace %s", p.Name)
 		return sdktrace.AlwaysSample().ShouldSample(p)
 	}
 	return os.wrapped.ShouldSample(p)
 }
 
-func (os override) Description() string {
+func (os forceable) Description() string {
 	return "OverrideSampler"
 }
 
-// overrideSampler returns a Sampler that uses the sampler from the environment but
+// ForceableSampler returns a Sampler that uses the sampler from the environment but
 // that checks the parent context for a special key that overrides the sampler to
 // always sample.
-func overrideSampler(wrapped sdktrace.Sampler) sdktrace.Sampler {
-	return override{wrapped: wrapped}
+func ForceableSampler(wrapped sdktrace.Sampler) sdktrace.Sampler {
+	return forceable{wrapped: wrapped}
+}
+
+type ForceSampleFilter interface {
+	ForceSample(r *http.Request) bool
+}
+
+type requestFilterFunc func(r *http.Request) bool
+
+func (rf requestFilterFunc) ForceSample(r *http.Request) bool {
+	return rf(r)
+}
+
+// NewHandler wraps the passed handler and allows callers to set rules for things that should
+// always be sampled.
+func NewHandler(handler http.Handler, filters ...ForceSampleFilter) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		for _, filter := range filters {
+			if filter.ForceSample(r) {
+				r = r.WithContext(AlwaysSample(r.Context()))
+			}
+		}
+		handler.ServeHTTP(w, r)
+	})
 }
