@@ -1,7 +1,7 @@
 # telemetry
 Common library for any Go code that wants to interface with telemetry.
 
-This expects everything to be configured via environment variables to maximize portability and flexibility.
+`telemetry` **expects everything to be configured via default otel environment variables to maximize portability and flexibility**.
 
 To modify the sample rate and sampling strategy, for example, you can use:
 
