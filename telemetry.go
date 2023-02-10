@@ -122,6 +122,20 @@ func (rf requestFilterFunc) ForceSample(r *http.Request) bool {
 	return rf(r)
 }
 
+// AlwaysSampleHTTPHeader returns a ForceSampleFilter that will always sample requests that
+// have the specified header set to the specified value.
+func AlwaysSampleHTTPHeader(header string, value string) ForceSampleFilter {
+	return requestFilterFunc(func(r *http.Request) bool {
+		return r.Header.Get(header) == value
+	})
+}
+
+// AlwaysSampleHeaderHandler wraps the passed handler and always samples requests that
+// have the specified header set to the specified value.
+func AlwaysSampleHeaderHandler(header string, value string, handler http.Handler) http.Handler {
+	return NewHandler(handler, AlwaysSampleHTTPHeader(header, value))
+}
+
 // NewHandler wraps the passed handler and allows callers to set rules for things that should
 // always be sampled.
 func NewHandler(handler http.Handler, filters ...ForceSampleFilter) http.Handler {
