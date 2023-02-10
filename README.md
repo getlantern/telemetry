@@ -26,11 +26,13 @@ From that point on, tracing is configured for you, and you can use it as normal.
 tracer := otel.Tracer("my-tracer")
 ```
 
-This library also contains convenience functions for forcing certain traces to be sampled. For example, to always sample HTTP requests with a specific HTTP header, you can run:
+This library also contains convenience functions for forcing certain traces to be sampled. For example, to always sample HTTP requests with a specific HTTP header and value, you can run:
 
 ```
 telemetry.AlwaysSampleHeaderHandler("name", "value", otelhttp.NewHandler(...)))
 ```
+
+If the value is "*", then it will always sample requests that have the header set to any value.
 
 `telemetry` includes this ability to force traces to be sampled more generally, though. If you want to force a trace to be sampled, you can call the following to add forced sampling to its context:
 

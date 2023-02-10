@@ -123,10 +123,14 @@ func (rf requestFilterFunc) ForceSample(r *http.Request) bool {
 }
 
 // AlwaysSampleHTTPHeader returns a ForceSampleFilter that will always sample requests that
-// have the specified header set to the specified value.
+// have the specified header set to the specified value. If the value is "*", then it will
+// always sample requests that have the header set to any value.
 func AlwaysSampleHTTPHeader(header string, value string) ForceSampleFilter {
 	return requestFilterFunc(func(r *http.Request) bool {
-		return r.Header.Get(header) == value
+		if value != "*" {
+			return r.Header.Get(header) == value
+		}
+		return r.Header.Get(header) != ""
 	})
 }
 
