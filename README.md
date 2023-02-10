@@ -12,7 +12,9 @@ OTEL_TRACES_SAMPLER_ARG=0.001
 
 See https://opentelemetry-python.readthedocs.io/en/latest/sdk/trace.sampling.html
 
-To use this, you can run, for example:
+## Setup
+
+`telemetry` is designed to minimize the boilerplate needed to get up and running quickly. To enable it, you simply add the following:
 
 ```go
 ctx := context.Background()
@@ -26,6 +28,7 @@ From that point on, tracing is configured for you, and you can use it as normal.
 tracer := otel.Tracer("my-tracer")
 ```
 
+## Sampling 
 This library also contains convenience functions for forcing certain traces to be sampled. For example, to always sample HTTP requests with a specific HTTP header and value, you can run:
 
 ```go
