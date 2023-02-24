@@ -2,11 +2,11 @@ package telemetry
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"os"
 	"strconv"
 
-	"github.com/getlantern/golog"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
@@ -14,8 +14,6 @@ import (
 
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
-
-var log = golog.LoggerFor("telemetry")
 
 // EnableOTELTracing enables OTEL tracing for HTTP requests with the OTEL provider configured via
 // environment variables. This allows us to switch providers purely by changing the environment variables.
@@ -25,19 +23,16 @@ var log = golog.LoggerFor("telemetry")
 // For example:
 // OTEL_TRACES_SAMPLER=traceidratio OTEL_TRACES_SAMPLER_ARG=0.001
 func EnableOTELTracing(ctx context.Context) func(context.Context) error {
-	log.Debug("Enabling OTEL tracing")
 	err := sampleRate()
 	if err != nil {
 		return func(ctx context.Context) error { return nil }
 	}
 	exp, err := otlptrace.New(ctx, otlptracehttp.NewClient())
 	if err != nil {
-		log.Errorf("telemetry failed to initialize exporter: %w", err)
 		return func(ctx context.Context) error { return nil }
 	}
 	envSampler, err := samplerFromEnv()
 	if err != nil {
-		log.Errorf("telemetry failed to initialize sampler: %w", err)
 		return func(ctx context.Context) error { return nil }
 	}
 
@@ -67,15 +62,15 @@ func EnableOTELTracing(ctx context.Context) func(context.Context) error {
 func sampleRate() error {
 	_, found := os.LookupEnv("OTEL_TRACES_SAMPLER")
 	if !found {
-		return log.Errorf("telemetry OTEL_TRACES_SAMPLER not found, required for running")
+		return fmt.Errorf("telemetry OTEL_TRACES_SAMPLER not found, required for running")
 	}
 	sampleRate, found := os.LookupEnv("OTEL_TRACES_SAMPLER_ARG")
 	if !found {
-		return log.Errorf("telemetry OTEL_TRACES_SAMPLER_ARG not found, required for running")
+		return fmt.Errorf("telemetry OTEL_TRACES_SAMPLER_ARG not found, required for running")
 	}
 	_, err := strconv.ParseFloat(sampleRate, 64)
 	if err != nil {
-		return log.Errorf("telemetry otel failed to parse sample rate: %w", err)
+		return fmt.Errorf("telemetry otel failed to parse sample rate: %w", err)
 	}
 	return nil
 }
@@ -95,7 +90,6 @@ type forceable struct {
 
 func (os forceable) ShouldSample(p sdktrace.SamplingParameters) sdktrace.SamplingResult {
 	if val, ok := p.ParentContext.Value(forceSample).(bool); ok && val {
-		log.Debugf("Overriding sampler to always sample for trace %s", p.Name)
 		return sdktrace.AlwaysSample().ShouldSample(p)
 	}
 	return os.wrapped.ShouldSample(p)
