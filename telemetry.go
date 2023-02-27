@@ -8,10 +8,13 @@ import (
 	"strconv"
 
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
+	"go.opentelemetry.io/otel/metric/global"
 	"go.opentelemetry.io/otel/propagation"
 
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
 
@@ -55,6 +58,26 @@ func EnableOTELTracing(ctx context.Context) func(context.Context) error {
 	return func(ctx context.Context) error {
 		tp.Shutdown(ctx)
 		return exp.Shutdown(ctx)
+	}
+}
+
+// EnableOTELMetrics enables OTEL metrics, configuring the OTEL provider using environment variables.
+func EnableOTELMetrics(ctx context.Context) func(context.Context) error {
+	exp, err := otlpmetrichttp.New(ctx)
+	if err != nil {
+		return func(ctx context.Context) error { return nil }
+	}
+
+	// Create a new meter provider
+	mp := sdkmetric.NewMeterProvider(
+		sdkmetric.WithReader(sdkmetric.NewPeriodicReader(exp)),
+	)
+
+	// Set the meter provider as global
+	global.SetMeterProvider(mp)
+
+	return func(ctx context.Context) error {
+		return mp.Shutdown(ctx)
 	}
 }
 
