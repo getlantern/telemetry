@@ -11,7 +11,7 @@ import (
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
-	"go.opentelemetry.io/otel/metric/global"
+
 	"go.opentelemetry.io/otel/propagation"
 
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
@@ -74,7 +74,7 @@ func EnableOTELMetrics(ctx context.Context) func(context.Context) error {
 	)
 
 	// Set the meter provider as global
-	global.SetMeterProvider(mp)
+	otel.SetMeterProvider(mp)
 
 	return func(ctx context.Context) error {
 		return mp.Shutdown(ctx)
